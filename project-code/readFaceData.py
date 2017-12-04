@@ -1,7 +1,8 @@
 import numpy as np
 
 def loadImages():
-    faceStuff = np.load("/home/adam/Documents/scratch/faces/face_images.npz")
+    path = "/home/adam/Documents/scratch/faces/face_images.npz"
+    faceStuff = np.load(path)
     # Of shape (imageHeight, imageWidth, images)
     data = faceStuff['face_images']
     height, weight, images = data.shape
