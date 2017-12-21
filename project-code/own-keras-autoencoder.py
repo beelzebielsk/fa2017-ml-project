@@ -1,41 +1,49 @@
 from keras.layers import (
-        Input, Dense, Activation, Flatten,
+        Input, Dense, Activation, Flatten, Dropout,
     )
 from keras.models import (Model, Sequential)
 from keras.datasets import mnist
 from keras import regularizers
+
 import numpy as np
 from matplotlib import pyplot as plt
+import json
 
 inputDim = 784
-hiddenDim = 784
 outputDim = inputDim
 inputImage = Input(shape=(inputDim,))
 
 networkCharacteristics = {
     'layers' : [
         {
-            'units' : 1500,
-            'activation' : 'sigmoid',
-            'activity_regularizer' : regularizers.l1(1e-4),
-            'input_shape' : (inputDim, ),
-        },
-        {
             'units' : 512,
             'activation' : 'relu',
+            #'activity_regularizer' : regularizers.l1(1e-5),
             'input_shape' : (inputDim, ),
         },
         {
             'units' : 256,
-            'activation' : 'sigmoid',
-            'input_shape' : (inputDim, ),
+            #'activity_regularizer' : regularizers.l1(1e-5),
+            'activation' : 'relu',
         },
         {
             'units' : 128,
+            'activity_regularizer' : regularizers.l1(1e-5),
+            'activation' : 'relu',
+        },
+        {
+            'units' : 256,
+            #'activity_regularizer' : regularizers.l1(1e-6),
+            'activation' : 'relu',
+        },
+        {
+            'units' : 512,
+            #'activity_regularizer' : regularizers.l1(1e-6),
             'activation' : 'relu',
         },
         {
             'units' : outputDim,
+            #'activity_regularizer' : regularizers.l1(1e-6),
             'activation' : 'sigmoid',
         },
     ],
@@ -45,14 +53,39 @@ networkCharacteristics = {
         'metrics' : ['accuracy'],
     },
     'fit' : {
-        'epochs' : 50,
+        'epochs' : 20,
         'batch_size' : 256,
         'shuffle' : True,
     },
 }
 
+"""
 layerList = [Dense(**layer)
               for layer in networkCharacteristics['layers']]
+"""
+layerList = [
+    Dense(
+        units=1000,
+        activation='relu',
+        input_shape=(inputDim,),
+        activity_regularizer=regularizers.l1(1e-6),
+    ),
+    Dense(
+        units=1200,
+        activation='relu',
+        activity_regularizer=regularizers.l1(1e-6),
+    ),
+    Dense(
+        units=1000,
+        activation='relu',
+        activity_regularizer=regularizers.l1(1e-6),
+    ),
+    Dense(
+        units=outputDim,
+        activation='relu',
+        activity_regularizer=regularizers.l1(1e-6),
+    ),
+]
 
 # The number of images is not specified in the input shape because
 # everything works the same regardless of this shape. So for the input
@@ -77,6 +110,7 @@ trainSamples = trainSamples.reshape(
 testSamples = testSamples.reshape(
         (len(testSamples), np.prod(testSamples.shape[1:])))
 # Verbose=2 for getting output stats without getting progress bar.
+history = \
 autoencoder.fit(trainSamples, trainSamples,
                 validation_data=(testSamples, testSamples), verbose=2,
                 **networkCharacteristics['fit'])
@@ -182,23 +216,60 @@ predictionGrid = createImageGrid(predictedDigits, gridShape=gridShape,
                                  imageShape=(28, 28))
 
 fig = plt.figure()
-ax = fig.add_subplot(221)
+ax = fig.add_subplot(321)
 ax.imshow(originalGrid, cmap='gray')
 ax.get_xaxis().set_visible(False)
 ax.get_yaxis().set_visible(False)
 ax.set_title("Original Images")
 
-ax = fig.add_subplot(222)
+ax = fig.add_subplot(322)
 ax.imshow(predictionGrid, cmap='gray')
 ax.get_xaxis().set_visible(False)
 ax.get_yaxis().set_visible(False)
 ax.set_title("Images Encoded then Decoded")
 
+modelConf = autoencoder.get_config()
+
+def cleanConf(modelConf):
+    # Return a copy of the config that satisfies these constraints.
+    clean = {}
+    # Tests which specify parts of a keras configuration that I don't
+    # want to keep in the printed configuration.
+    tests = [
+        lambda k,v: True if v is None else False,
+        lambda k,v: True if k == 'name' else False,
+        lambda k,v: True if k == 'trainable' else False,
+        lambda k,v: True if k == 'kernel_initializer' else False,
+        lambda k,v: True if 'bias' in k else False,
+        lambda k,v: True if k in ['l1', 'l2'] and v == 0.0 else False,
+        lambda k,v: True if k == 'dtype' else False,
+        lambda k,v: True if k == 'batch_input_shape' else False,
+    ]
+    if isinstance(modelConf, (str, int, float, bool)):
+        return modelConf
+    if isinstance(modelConf, dict):
+        for key, value in modelConf.items():
+            results = [t(key, value) for t in tests]
+            if not any(results):
+                clean[key] = cleanConf(value)
+        return clean
+    elif isinstance(modelConf, (list, tuple)):
+        return [cleanConf(x) for x in modelConf]
+
+def stringifyModelConf(modelConf):
+    entries = [json.dumps(x) for x in modelConf]
+    return '\n'.join(entries)
+
+ax = fig.add_subplot(325)
+ax.axis('off');
+ax.text(0,0, stringifyModelConf(cleanConf(modelConf)), fontsize=14)
+
+"""
 ax = fig.add_subplot(223)
 ax.axis('off')
 # Easier to get per-layer characteristics from Keras than to manually
 # maintain them in dict.
-modelConf = autoencoder.get_config()
+
 
 # Layer Table
 rowLabels = ['Layer ' + str(i) for i in range(1, len(modelConf) + 1)]
@@ -218,8 +289,9 @@ cellText=layerCharacteristics
 
 layerTable = ax.table(cellText=cellText, rowLabels=rowLabels,
                  colLabels=colLabels, loc='upper right', colWidths=[.2, .2, .3, .3])
+"""
 
-ax = fig.add_subplot(224)
+ax = fig.add_subplot(324)
 ax.axis('off')
 rowLabels = list(networkCharacteristics['model'].keys())
 rowLabels.extend(list(networkCharacteristics['fit'].keys()))
@@ -228,14 +300,17 @@ cellText.extend([[v] for v in networkCharacteristics['fit'].values()])
 modelTable = ax.table(cellText=cellText, rowLabels=rowLabels,
                       loc='upper left', colWidths=[.8])
 
+
+ax = fig.add_subplot(323)
+ax.axis('off')
 rowLabels = autoencoder.metrics_names
 cellText = [[v] for v in autoencoder.test_on_batch(
                 originalDigits, originalDigits)]
 performanceTable = ax.table(cellText=cellText, rowLabels=rowLabels,
-                            loc='lower left', colWidths=[.5])
+                            loc='center', colWidths=[.5])
 
-layerTable.auto_set_font_size(False)
-layerTable.set_fontsize(14)
+#layerTable.auto_set_font_size(False)
+#layerTable.set_fontsize(14)
 modelTable.auto_set_font_size(False)
 modelTable.set_fontsize(14)
 performanceTable.auto_set_font_size(False)
